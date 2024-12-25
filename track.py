@@ -1,13 +1,14 @@
+
 import tkinter as tk
 from tkinter import messagebox
 import datetime
 import json
 import os
 import time
-import winsound
 import matplotlib.pyplot as plt
 import numpy as np
 from tkinter import ttk
+
 # Constants
 WORK_TYPES = {"Easy": 0.5, "Medium": 1, "Hard": 1.5}
 DEFAULT_TYPE = "Medium"
@@ -30,7 +31,6 @@ def log_activity(event=None):
     global last_activity_time
     last_activity_time = time.time()
 
-
 def distraction_alert():
     global last_activity_time
     if current_session:
@@ -39,7 +39,7 @@ def distraction_alert():
             try:
                 for _ in range(5):
                     try:
-                        winsound.Beep(1000, 300)
+                        print("Hello")
                     except RuntimeError as e:
                         print(f"Beep error: {e}")
                     time.sleep(0.3)
@@ -57,9 +57,12 @@ def distraction_alert():
     if root and root.winfo_exists():
         root.after(30000, distraction_alert)
 
+def hms_to_seconds(hms):
+    """Converts hh:mm:ss to total seconds."""
+    hours, minutes, seconds = map(int, hms.split(":"))
+    return hours * 3600 + minutes * 60 + seconds
 
 def load_logs():
-    """Load logs from the file and calculate total hours worked."""
     global logs, total_hours_worked
     total_hours_worked = 0  # Reset total hours worked
     if os.path.exists(LOG_FILE):
@@ -69,30 +72,23 @@ def load_logs():
                 if not isinstance(logs, list):
                     logs = []
             # Calculate total hours worked, ensuring all values are treated as floats
+            total_seconds =0;
             for log in logs:
-                duration = log.get("duration", 0)
-                if isinstance(duration, (int, float)):
-                    total_hours_worked += float(duration)  # Ensure it's a float in hours
+                duration = log.get("duration", "00:00:00")  # Default to "00:00:00" if no duration found
+                if isinstance(duration, str):  # Ensure it's a string in hh:mm:ss format
+                    duration_in_seconds = hms_to_seconds(duration)
+                    total_hours_worked += duration_in_seconds / 3600  # Convert seconds to hours
         except (json.JSONDecodeError, FileNotFoundError):
             logs = []
     update_remaining_hours_display()  # Update after loading logs
 
+
 def update_remaining_hours_display():
     global remaining_hours_label, total_hours_worked
     if remaining_hours_label:
-        remaining_hours = max(0, TOTAL_WEEKLY_TARGET - total_hours_worked)
-        remaining_hours_label.config(text=f"Remaining Hours: {remaining_hours:.2f} hrs")
-
-
-
-
-for log in logs:
-    duration = log.get("duration", 0)
-    if isinstance(duration, (int, float)):
-        # Ensure durations are consistently in hours
-        total_hours_worked += float(duration)
-
-
+        remaining_seconds = (TOTAL_WEEKLY_TARGET - total_hours_worked) * 3600  # Convert remaining hours to seconds
+        formatted_remaining_time = seconds_to_hms(remaining_seconds)  # Convert seconds to HH:MM:SS format
+        remaining_hours_label.config(text=f"Remaining Time: {formatted_remaining_time}")
 
 def save_logs():
     try:
@@ -102,18 +98,21 @@ def save_logs():
         print(f"Error saving logs: {e}")
         messagebox.showerror("Error", "Failed to save logs. Please check permissions.")
 
+def seconds_to_hms(seconds):
+    """Convert seconds to HH:MM:SS format."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 def update_timer():
     global elapsed_seconds, timer_running
     if timer_running:
         elapsed_seconds += 1
-        formatted_time = str(datetime.timedelta(seconds=elapsed_seconds))
+        formatted_time = seconds_to_hms(elapsed_seconds)  # Use the formatted time
         if root and timer_label.winfo_exists():
             timer_label.config(text=f"Timer: {formatted_time}")
             root.after(1000, update_timer)
-
-
-
 
 def start_work(work_type):
     global current_session, last_activity_time, elapsed_seconds, timer_running
@@ -121,7 +120,6 @@ def start_work(work_type):
         messagebox.showinfo("Session Active", "A session is already active!")
         return
 
-    # Ensure description is only editable after session starts
     description_text.config(state=tk.NORMAL)  # Enable the text box
     description_text.delete("1.0", tk.END)  # Clear previous description
 
@@ -141,7 +139,6 @@ def start_work(work_type):
     start_button.config(state=tk.DISABLED)  # Disable start button
     messagebox.showinfo("Work Started", f"Work session started! Type: {work_type}")
 
-
 def stop_work():
     """Stop the current work session and log the duration."""
     global current_session, timer_running, total_hours_worked, elapsed_seconds
@@ -149,21 +146,32 @@ def stop_work():
         messagebox.showinfo("No Active Session", "No active session to stop!")
         return
 
+    print("DEBUG: stop_work() called.")  # Debug start message
+
     timer_running = False
     end_time = datetime.datetime.now()
+    print(f"DEBUG: end_time = {end_time.isoformat()}")  # Debug end time
+
     current_session["end"] = end_time.isoformat()
     start_time = datetime.datetime.fromisoformat(current_session["start"])
-    
-    # Fix duration calculation to ensure it's in hours
+    print(f"DEBUG: start_time = {start_time.isoformat()}")  # Debug start time
+
     duration_in_seconds = (end_time - start_time).total_seconds()
-    duration = duration_in_seconds / 3600  # Convert seconds to hours
-    current_session["duration"] = round(duration, 2)  # Round to 2 decimal places
+    print(f"DEBUG: duration_in_seconds = {duration_in_seconds}")  # Debug duration in seconds
+
+    # Convert seconds to HH:MM:SS format
+    formatted_duration = seconds_to_hms(duration_in_seconds)
+    print(f"DEBUG: formatted_duration = {formatted_duration}")  # Debug formatted duration
+
+    current_session["duration"] = formatted_duration  # Store formatted duration
 
     logs.append(current_session)
     save_logs()
 
     # Update total hours worked accurately
-    total_hours_worked += round(duration, 2)
+    total_hours_worked += duration_in_seconds / 3600  # Store total hours as a decimal
+    update_remaining_hours_display()  # Update remaining hours dynamically
+
     elapsed_seconds = 0
     update_remaining_hours_display()  # Update remaining hours dynamically
 
@@ -172,10 +180,9 @@ def stop_work():
     description_text.config(state=tk.DISABLED)  # Disable description updates
     description_text.delete("1.0", tk.END)  # Clear description field
 
-    messagebox.showinfo("Work Stopped", f"Work session stopped.\nDuration: {duration:.2f} hours logged.")
+    messagebox.showinfo("Work Stopped", f"Work session stopped.\nDuration: {formatted_duration} logged.")
     timer_label.config(text="Timer: 00:00:00")
     start_button.config(state=tk.NORMAL)  # Enable start button
-
 
 def update_description():
     """Allow updating the description only if a session is active."""
@@ -190,8 +197,6 @@ def update_description():
         messagebox.showinfo("Description Updated", "Task description updated successfully!")
     else:
         messagebox.showerror("Error", "Description cannot be empty. Please enter a valid task description.")
-
-
 
 def weekly_report():
     now = datetime.datetime.now()
@@ -217,7 +222,6 @@ def weekly_report():
         report_text += "\nNo work logged this week."
 
     messagebox.showinfo("Weekly Report", report_text)
-
 
 def show_progress():
     daily_hours = {day: 0 for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
@@ -322,83 +326,97 @@ def create_gui_modern():
         bg="#e8f4fa", 
         fg="#2c2c2c"
     )
-    work_type_label.grid(row=0, column=0, padx=5, pady=2, sticky="w")
+    work_type_label.pack(pady=2)
 
     work_type_var = tk.StringVar(value=DEFAULT_TYPE)
-    for i, (text, value) in enumerate(WORK_TYPES.items()):
-        tk.Radiobutton(
-            work_type_frame, 
-            text=text, 
-            variable=work_type_var, 
-            value=text, 
-            bg="#e8f4fa", 
-            fg="#2c2c2c", 
-            selectcolor="#e8f4fa"
-        ).grid(row=i + 1, column=0, padx=5, pady=1, sticky="w")
+    work_type_menu = ttk.Combobox(
+        work_type_frame, 
+        textvariable=work_type_var, 
+        values=["Easy", "Medium", "Hard"], 
+        state="readonly", 
+        font=("Arial", 10)
+    )
+    work_type_menu.pack(pady=5)
 
-    # Task Description Section
-    description_frame = tk.Frame(content_frame, bg="#f4f9fd", bd=1, relief="solid")
-    description_frame.pack(fill="x", padx=5, pady=5)
+    # Description Section
+    description_frame = tk.Frame(content_frame, bg="#f0f8ff", bd=1, relief="solid")
+    description_frame.pack(fill="both", padx=5, pady=5)
 
     description_label = tk.Label(
         description_frame, 
         text="Task Description:", 
         font=("Arial", 10), 
-        bg="#f4f9fd", 
+        bg="#f0f8ff", 
         fg="#2c2c2c"
     )
-    description_label.pack(anchor="w", padx=5, pady=2)
+    description_label.pack(pady=2)
 
-    description_text = tk.Text(description_frame, height=3, width=35, font=("Arial", 9), bg="#ffffff", fg="#2c2c2c")
-    description_text.pack(padx=5, pady=2)
+    description_text = tk.Text(description_frame, height=5, font=("Arial", 10))
+    description_text.pack(fill="both", padx=5, pady=5)
+    description_text.config(state=tk.DISABLED)  # Initially disable text box
+
+    # Start and Stop buttons
+    button_frame = tk.Frame(content_frame, bg="#ffffff")
+    button_frame.pack(fill="x", padx=5, pady=10)
+
+    start_button = tk.Button(
+        button_frame, 
+        text="Start Work", 
+        font=("Arial", 10), 
+        bg="#66cc66", 
+        fg="white", 
+        command=lambda: start_work(work_type_var.get())
+    )
+    start_button.pack(side="left", padx=10)
+
+    stop_button = tk.Button(
+        button_frame, 
+        text="Stop Work", 
+        font=("Arial", 10), 
+        bg="#cc6666", 
+        fg="white", 
+        command=stop_work
+    )
+    stop_button.pack(side="left", padx=10)
 
     # Action Buttons
-    action_frame = tk.Frame(content_frame, bg="#ffffff")
-    action_frame.pack(fill="x", padx=5, pady=5)
+    action_button_frame = tk.Frame(content_frame, bg="#ffffff")
+    action_button_frame.pack(fill="x", padx=5, pady=10)
 
-    def create_gradient_button(parent, text, command):
-        return tk.Button(
-            parent, 
-            text=text, 
-            command=command, 
-            font=("Arial", 8), 
-            bg="#d9eaf7", 
-            fg="#2c2c2c", 
-            relief="flat", 
-            activebackground="#fff4d9", 
-            activeforeground="#2c2c2c"
-        )
+    update_description_button = tk.Button(
+        action_button_frame, 
+        text="Update Description", 
+        font=("Arial", 10), 
+        bg="#ffcc66", 
+        fg="white", 
+        command=update_description
+    )
+    update_description_button.pack(side="left", padx=10)
 
-    start_button = create_gradient_button(action_frame, "Start Work", lambda: start_work(work_type_var.get()))
-    stop_button = create_gradient_button(action_frame, "Stop Work", stop_work)
+    weekly_report_button = tk.Button(
+        action_button_frame, 
+        text="Weekly Report", 
+        font=("Arial", 10), 
+        bg="#ffcc66", 
+        fg="white", 
+        command=weekly_report
+    )
+    weekly_report_button.pack(side="left", padx=10)
 
-    start_button.pack(side="left", padx=5, pady=2)
-    stop_button.pack(side="right", padx=5, pady=2)
+    progress_button = tk.Button(
+        action_button_frame, 
+        text="Show Progress", 
+        font=("Arial", 10), 
+        bg="#ffcc66", 
+        fg="white", 
+        command=show_progress
+    )
+    progress_button.pack(side="left", padx=10)
 
-    # Centered Update Description Button
-    update_desc_button = create_gradient_button(action_frame, "Update Description", update_description)
-    update_desc_button.pack(pady=5)
-
-    # Report Buttons
-    report_frame = tk.Frame(content_frame, bg="#ffffff")
-    report_frame.pack(fill="x", padx=5, pady=5)
-
-    weekly_report_button = create_gradient_button(report_frame, "Weekly Report", weekly_report)
-    progress_chart_button = create_gradient_button(report_frame, "Progress Chart", show_progress)
-
-    weekly_report_button.pack(side="left", padx=5, pady=2)
-    progress_chart_button.pack(side="right", padx=5, pady=2)
-
-    # Bind activity logging
-    root.bind("<Motion>", log_activity)
-    root.bind("<Key>", log_activity)
-
-    distraction_alert()  # Start distraction alerts
+    load_logs()  # Load logs on startup
+    root.after(30000, distraction_alert)  # Set periodic distraction alert
     root.mainloop()
 
-
-
-if __name__ == "__main__":
-    
-    create_gui_modern()  # Start the GUI
+# Create GUI
+create_gui_modern()
 
